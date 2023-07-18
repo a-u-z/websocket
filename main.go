@@ -3,6 +3,7 @@ package main
 import (
 	"log"
 	"net/http"
+	"time"
 
 	"github.com/gorilla/websocket"
 )
@@ -87,10 +88,53 @@ func handleWebSocket(w http.ResponseWriter, r *http.Request) {
 	// 将新连接的客户端添加到 clients 映射中
 	clients[client] = true
 
+	// 设置心跳检测间隔
+	heartbeatInterval := time.Second * 10
+	// 定义心跳消息内容
+	heartbeatMessage := []byte("heartbeat")
+
+	go handleHeartbeat(conn, heartbeatInterval, heartbeatMessage)
 	go client.writePump()
 	go client.readPump()
+
 	// 调用 broadcastMessages 函数来处理消息广播
 	broadcastMessages()
+}
+
+// 根據實際狀況還可以如果沒有收到心跳那就斷開連線
+func handleHeartbeat(conn *websocket.Conn, interval time.Duration, message []byte) {
+	ticker := time.NewTicker(interval)
+	defer func() {
+		ticker.Stop()
+		conn.Close()
+	}()
+
+	for range ticker.C {
+		// 发送心跳消息
+		if err := conn.WriteMessage(websocket.TextMessage, message); err != nil {
+			log.Println("Failed to send heartbeat:", err)
+			return
+		}
+	}
+
+	// 前端的處理
+	// 	const socket = new WebSocket("ws://localhost:8080/ws");
+	// socket.onopen = function() {
+	//   console.log("Connected to WebSocket");
+	// };
+	// socket.onmessage = function(event) {
+	//   if (event.data === "heartbeat") {
+	//     // 收到心跳消息，回复服务器
+	//     socket.send("heartbeat");
+	//   } else {
+	//     // 处理其他消息
+	//     console.log("Received message:", event.data);
+	//   }
+	// };
+
+	//	socket.onclose = function(event) {
+	//	  console.log("Connection closed");
+	//	};
 }
 
 func (c *Client) readPump() {
